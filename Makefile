@@ -3,7 +3,7 @@ CFLAGS = -Wall -g -fPIC
 
 .PHONY: run clean
 
-all: intel-all malloc hello
+all: intel-all malloc hello main_prog
 
 libmalloc.so: malloc.o
 	$(CC) $(CFLAGS) -shared -o libmalloc.so malloc.o
@@ -41,8 +41,15 @@ hello: hello.o libmalloc.so
 hello.o: hello.c
 	$(CC) -Wall -g -c -o hello.o hello.c
 
-run: hello
-	./hello
+#want to run my own stuff
+main_prog: main.o libmalloc.so 
+	$(CC) -g -L./lib64 -o main main.o -lmalloc
+    
+main.o: main.c
+	$(CC) -Wall -g -c -o main.o main.c
+
+run: main
+	./main
 
 clean:
 	rm -rf *.o *.a *.so hello lib lib64

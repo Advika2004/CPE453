@@ -33,5 +33,10 @@ size_t make_16(size_t number);
 int split_chunk(ChunkInfo chunk_info);
 ChunkInfo find_free_chunk(ChunkHeader* currChunk, size_t reqSize);
 void* get_more_heap();
+void* calloc(size_t num_elements, size_t element_size);
+void* realloc(void* ptr, size_t new_size);
+void free(void* ptr);
+ChunkHeader* find_which_chunk(void* ptr);
+ChunkHeader* combine_free_chunks(ChunkHeader* currChk);
 
 #endif
