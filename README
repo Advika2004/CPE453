@@ -1,0 +1,92 @@
+First task: initialzie the heap so I can start allocating memory.
+init_heap()
+- first call sbrk(0)
+    - will return a pointer to the start of teh heap
+    - check if that value is divisible by 16
+    - if it is, then proceed
+    - if not, then make it divisible by 16 by moving the program break to the next location divisible by 16
+    (the math for that is (boundary - (current number % boundary)) and then add that to the current boundary)
+    (for example, if I wanted to make it aligned to 10 bytes, but I am at 15, I would do (10 - (15 % 10)) which is
+    10 - 5 = 5. Then do 15 + 5 = 20, which is the next nearest boundary that is aligned with 10 bytes)
+    - make the pointer point there instead of the start of the heap
+- make the first sbrk call (sbrk(64KB))
+    - create the first header and initialize the fields as NULL and 1 since the chunk is free
+    - calculate the chunk size left 
+        - 64KB - HEADER_SIZE
+        - check if that value is divisible by 16
+            - if yes, then continue
+            - if not, then round up to the nearest value 
+            - set that equal to firstChunk->size
+
+Second task: now write a function that will traverse over the free chunks and check if they are large enough for what we need 
+make a struct called ChunkInfo that keeps track of if enough memory was found or not, and a pointer to where that chunk starts
+find_free_chunk()
+- while the chunk's next pointer is not NULL
+    - check if the chunk's size metric is greater than or equal to the chunk size you are looking for
+        - if it is, then store a pointer to where that chunk header starts in memory in the struct
+            (returning the pointer to the header, will calculate the actual start of usable memory in the malloc function)
+    - if the the size you are looking for is not found, then store a 0 in the struct indicating not enough memory was found
+- if the next pointer is null, put a 0 in the struct
+- return the struct by value not as a pointer so that it gets stored on the stack instead of the heap
+
+
+Third task: write a function that will go to the chunk with enough space and then split it up
+it will take the amount given by the user, and allocate it 
+what does "allocate it" mean? It means to take the chunk, and edit the header so that it now says its not free.
+also change the size to be the size the user wanted to allocate
+then from that header, find the locaation where the new free chunk starts 
+do this by making a new pointer point to where the chunk started. 
+move this pointer by the amount of bytes the user asked for + the header 
+that will take you to where the new chunk starts
+at that point, make a new header, implying that you are now creating a new chunk
+make that say its free
+calculate the new size of that which would be previous chunk size - what the user asked for + sizeof(header)
+(might need to store the previous chunk size in another variable so that I can do this math? maybe in a global variable)
+not sure what this function returns. 
+
+
+- function takes in an instance of the chunk info struct
+- go to the chunk by looking at the chunk struct region that has the start of chunk pointer that points to the header of that chunk
+- change the header so that it is marked as used
+- calcualte how much space is left for the new free chunk 
+(current chunk size - requested size - sizeof(ChunkHeader))
+- change the size field of the struct so that it is the user-requested size
+- calculate where the new chunk starts (start_of_chunk_ptr + header + usersize)
+- make a new header here 
+    - set it to free
+    - make the size as the calculated free chunk size - header 
+- set the next pointer of the first chunk to point to the start of this new chunk
+- set the previous pointer of the next chunk to point to the old chunk 
+- return nothing 
+
+
+another task:
+now write a function for if the user asks for more memory, I need to be able to sbrk() for more and create a new header
+- call sbrk(64KB) and add more memory
+- set all of the chunk's fields
+- find what the last chunk is in the current list, and set its next to point to this chunk
+- so you have added on a new chunk 
+- 
+
+
+
+
+final task for malloc: putting it all together
+
+malloc()
+ - first check if the heap exists
+    - if it doesn't call initialize_heap()
+    - if it does, then go to next step
+    - have a int variable act as a flag. 1 for successful memory found, and 0 for not found. 
+- while the success flag is not turned on
+    - call find free chunk
+    - if the chunkInfo->enough_space = 1
+    - call splitchunk
+    - if splitchunk returns a 0 or a 1, then turn on the success flag
+        - return the pointer calculated correctly
+    - if it returns a -1, 
+        - then keep the success flag off
+        - call get more heap
+    - if find free chunk chunkInfo->enough_space = 0;
+    - call get more heap again 
+
