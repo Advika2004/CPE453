@@ -375,11 +375,7 @@ void* malloc(size_t requested_amount){
                 chunkInfo.start_of_free_chunk_ptr->size;
                 size_t left_to_allocate = requested_amount - allocated_already;
 
-                printf("Allocated already: %" PRIu64
-                 " bytes, Left to allocate: %" PRIu64 
-                " bytes, Requested Amount: %" PRIu64 " bytes\n",
-                allocated_already, left_to_allocate, requested_amount);
-
+            
                 //say current chunk is fully used
                 chunkInfo.start_of_free_chunk_ptr->is_it_free = 0; 
 
@@ -399,118 +395,5 @@ void* malloc(size_t requested_amount){
             }
         }
     }       
-    return ptr_to_user_memory;
-}
-
-
-
-
-
-                // Allocate a new chunk for the remaining space
-                ChunkHeader* new_heap_chunk = get_more_heap();
-
-                    //check if that fails
-                    if (new_heap_chunk == NULL) {
-                        printf("Error: Could not allocate more memory.\n");
-                        return NULL;
-                    }
-
-                //allocate what was left over
-                ChunkInfo newChunkInfo = find_free_chunk(new_heap_chunk, left_to_allocate);
-                int leftoverResult = split_chunk(newChunkInfo);
-
-                    // return in new chunk where leftover memory was allocated
-                    if (leftoverResult == 0 || leftoverResult == 1) {
-                        ptr_to_user_memory = (void*)((uintptr_t)newChunkInfo.start_of_free_chunk_ptr + sizeof(ChunkHeader));
-                        successFlag = 1;
-                        return ptr_to_user_memory;
-                    }
-            }
-
-    // If no chunk had enough space (enough_space == 0)
-    else if (chunkInfo.enough_space == 0) {
-        printf("Allocating memory from a new chunk entirely.\n");
-
-        // Allocate a new chunk of memory
-        ChunkHeader* new_heap_chunk = get_more_heap();
-        if (new_heap_chunk == NULL) {
-            printf("Error: Could not allocate more memory.\n");
-            return NULL;
-        }
-
-        // Allocate the requested memory from the new chunk
-        ptr_to_user_memory = (void*)((uintptr_t)new_heap_chunk + sizeof(ChunkHeader));
-        successFlag = 1;
-        return ptr_to_user_memory;
-    }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                else if (result == -1){ //not enough space in this chunk to allocate
-                    printf("REACHING HERE??\n");
-                    //need to use up what is left of the first 
-                    //chunk then allocate from the second chunk
-                    //can allocate whatevers left of the free chunk
-                    uint64_t allocated_already = chunkInfo.start_of_free_chunk_ptr->size;
-                    uint64_t left_to_allocate = (requested_amount - allocated_already);
-
-
-                    printf("Allocated already: %" PRIu64 " bytes, Left to allocate: %" PRIu64 " bytes, 
-                    Requested Amount: %" PRIu64 " bytes\n" ,allocated_already, left_to_allocate, requested_amount);
-
-                    chunkInfo.start_of_free_chunk_ptr->is_it_free = 0; 
-                    //since that chunk was fully used, mark it as used
-
-                    //grab a new chunk now
-                    ChunkHeader* new_heap_chunk = get_more_heap();
-                    if (new_heap_chunk == NULL) {
-                        return NULL;  //can't get more memory
-                    }
-
-                    ChunkInfo newChunkInfo = find_free_chunk(new_heap_chunk, left_to_allocate);
-                    int leftoverResult = split_chunk(newChunkInfo);
-
-                    //return the spot in the new chunk where the 
-                    //leftover memory was allocated and stopped. 
-                    if(leftoverResult == 0 || leftoverResult == 1){
-                        ptr_to_user_memory = (void*)((uintptr_t)newChunkInfo.start_of_free_chunk_ptr + sizeof(ChunkHeader));
-                        return ptr_to_user_memory;
-                    }
-
-                }
-        }
-        else if (chunkInfo.enough_space == 0){
-            ChunkHeader* new_heap_chunk = get_more_heap();
-            if (new_heap_chunk == NULL) {
-                return NULL;  
-            }
-        }
-    }
-
     return ptr_to_user_memory;
 }
