@@ -1,5 +1,8 @@
 #include "malloc.h"
 
+//buffer for printing stuff
+static char buf[BUFFER_SIZE];
+
 //start of the heap
 ChunkHeader *startOfHeap = NULL; 
 
@@ -28,9 +31,7 @@ void* initialize_heap(){
     uintptr_t mathableAddy = (uintptr_t)startOfHeap;
     if((mathableAddy % 16) != 0){
         uintptr_t byteAdjustment = 16 - (mathableAddy % 16); 
-        printf("byte adjustment: %zu\n", byteAdjustment);
         void* AlignedStartOfHeap = sbrk(byteAdjustment); 
-        printf("new aligned start of heap: %p\n", AlignedStartOfHeap);
 
         //check if that fails
         if(AlignedStartOfHeap == (void*)-1){ 
@@ -53,15 +54,11 @@ void* initialize_heap(){
     //puts the first node in the chunk of memory 
     //bc start of memory chunk points to chunk header
     //size available = total - header
-    printf("First chunk start address: %p\n", firstChunkStart);
     ChunkHeader *firstChunk = (ChunkHeader*)firstChunkStart; 
     size_t calculated_size = STANDARD_HEAP_SIZE - CHUNK_HEADER;
 
     //make sure user size is aligned
-    printf("calculated size before making it 16 multiple: %zu\n", calculated_size);
     firstChunk->size = make_16(calculated_size);
-
-    printf("First chunk size (should be divisible by 16): %zu\n", firstChunk->size);
 
     //set parameters of struct
     //first node
@@ -71,8 +68,6 @@ void* initialize_heap(){
     firstChunk->next = NULL;
 
     //make sure fields get assigned properly
-    printf("Chunk Header - Address: %p, Size: %zu, Is It Free?: %d\n", 
-    (void*)firstChunk, firstChunk->size, firstChunk->is_it_free);
 
     //ptr to where chunk header starts
     return firstChunk; 
@@ -116,18 +111,12 @@ int split_chunk(ChunkInfo chunk_info){
     //current free chunk will be allocated
     //edit that header and make it not free
     ChunkHeader *split_allocated = chunk_info.start_of_free_chunk_ptr;  
-
-    printf("Chunk size: %" PRIu64 "\n", split_allocated->size);
-    printf("Requested size (aligned): %" PRIu64 "\n", chunk_info.amount_asked_for);
-    printf("Header size: %zu\n", sizeof(ChunkHeader));  
-
-    
+   
     // check if user asks for more than I have
     // not enough space, return -1
     // do not allocate anything right now
     // this case will be handled in the malloc
     if (chunk_info.amount_asked_for + sizeof(ChunkHeader) + 16 > split_allocated->size) {
-        printf("user asked for more than what is available, no splitting. \n");
         return -1; 
     }
 
@@ -191,20 +180,16 @@ void* get_more_heap(){
         return NULL;
     }
 
-    printf("new chunk of the heap start address: %p\n", startOfNewHeap);
-
     //check if aligned
     //if not do same as init heap
     //make it mathable then adjust pointer
     uintptr_t mathableNewAddy = (uintptr_t)startOfNewHeap;
     if((mathableNewAddy % 16) != 0){
         uintptr_t byteNewAdjustment = 16 - (mathableNewAddy % 16); 
-        printf("byte adjustment: %zu\n", byteNewAdjustment);
 
         //move the program break that many bytes forward 
         //until the next multiple of 16
         void* AlignedStartOfNewHeap = sbrk(byteNewAdjustment); 
-        printf("new aligned start of heap: %p\n", AlignedStartOfNewHeap);
 
         //if the sbrk fails make it error
         if(AlignedStartOfNewHeap == (void*)-1){ 
@@ -228,11 +213,9 @@ void* get_more_heap(){
     //find how much more memory the user can have
     ChunkHeader *newHeapChunk = (ChunkHeader*)moreHeapChunkStart; 
     size_t new_calculated_size = STANDARD_HEAP_SIZE - CHUNK_HEADER;
-    printf("getting more mem,new calculated size: %zu\n", new_calculated_size);
 
     //make sure it is aligned
     newHeapChunk->size = make_16(new_calculated_size);
-    printf("the new heap chunk's size: %zu\n", newHeapChunk->size);
 
     //yes this chunk is free
     newHeapChunk->is_it_free = 1; 
@@ -244,7 +227,6 @@ void* get_more_heap(){
     //if there is only one node in the list, then it is the last one.
     //next of the new chunk is NULL since it is now the last in the list
     if (startOfHeap->next == NULL) {  
-        printf("list only got one node bruh\n");
         newHeapChunk->prev = startOfHeap;
         startOfHeap->next = newHeapChunk;
         newHeapChunk->next = NULL; 
@@ -261,21 +243,18 @@ void* get_more_heap(){
         newHeapChunk->next = NULL; 
     }
 
-    printf("did it get to the end of get heap\n");
     return newHeapChunk;
 }
 
 //recursive function to keep allocating what is left over
 void* allocate_leftover(size_t left_to_allocate) {
-    printf("Allocating new chunk for leftover space of %" PRIu64
-     " bytes\n", left_to_allocate);
+
 
     //allocate a new chunk
     ChunkHeader* new_heap_chunk = get_more_heap();
 
     //check if that fails
     if (new_heap_chunk == NULL) {
-        printf("Error: Could not allocate more memory.\n");
         return NULL;
     }
 
@@ -299,12 +278,16 @@ void* allocate_leftover(size_t left_to_allocate) {
         return allocate_leftover(new_left_to_allocate);
     }
     //should never reach here
-    printf("REACH HERE IT SHOULD NOT BAD BAD BAD\n");
     return NULL;
 }
 
 
 void* malloc(size_t requested_amount){
+
+    //check if malloc is linking and running
+    snprintf(buf, BUFFER_SIZE, "MALLOC IS BEING CALLED:\n");
+    write(STDOUT_FILENO, buf, strlen(buf));
+
     //starts off as no memory found so not successful
     int successFlag = 0; 
 
@@ -333,14 +316,12 @@ void* malloc(size_t requested_amount){
             //if the whole chunk was allocated
             //need to grab a new chunk and return the start of that to user
             if (result == 0) {
-                printf("entire chunk was allocated. getting more mem.\n");
 
                 //allocate a new chunk
                 ChunkHeader* got_more_chunk = get_more_heap();
     
                 //check if that fails
                 if (got_more_chunk == NULL) {
-                    printf("Error: Could not allocate more memory.\n");
                     return NULL;
                 }
 
@@ -356,7 +337,6 @@ void* malloc(size_t requested_amount){
             //if the chunk was split up and allocated
             //return pointer to the split_free header
             else if (result == 1) {
-                printf("Chunk was successfully split.\n");
                 ptr_to_user_memory = (void*)((uintptr_t)
                 chunkInfo.start_of_free_chunk_ptr + sizeof(ChunkHeader));
                 successFlag = 1;
@@ -367,7 +347,6 @@ void* malloc(size_t requested_amount){
             //If no chunk had enough space (enough_space == 0) 
             //or if the result was -1 (nothing was allocated bc too small)
             else if (chunkInfo.enough_space == 0 || result == -1) {
-            printf("Not enough space current chunk. Allocating new chunk.\n");
 
                 //allocate the entire thing
                 //calculate how much spills over for the new chunk
@@ -389,7 +368,6 @@ void* malloc(size_t requested_amount){
                     return ptr_to_user_memory;
                 }
                 else {
-                    printf("Error: Could not allocate leftover memory.\n");
                     return NULL;
                 }
             }

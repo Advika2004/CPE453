@@ -5,11 +5,13 @@
 #include <unistd.h>    
 #include <errno.h>     
 #include <inttypes.h>  
+#include <string.h>
 
-// Define this as 64KB (you can change it if needed)
-// Size of the chunk header
+
 #define STANDARD_HEAP_SIZE 65536  
 #define CHUNK_HEADER sizeof(ChunkHeader)  
+#define BUFFER_SIZE 1500
+#define length strlen(buf)
 
 typedef struct ChunkHeader {
     size_t size;          
@@ -23,5 +25,13 @@ typedef struct ChunkInfo {
     uint64_t amount_asked_for;             
     int enough_space;                      
 } ChunkInfo;
+
+void* initialize_heap();
+void* malloc(size_t requested_amount);
+void* allocate_leftover(size_t left_to_allocate);
+size_t make_16(size_t number);
+int split_chunk(ChunkInfo chunk_info);
+ChunkInfo find_free_chunk(ChunkHeader* currChunk, size_t reqSize);
+void* get_more_heap();
 
 #endif
