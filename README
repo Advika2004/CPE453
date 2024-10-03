@@ -139,6 +139,35 @@ int combine_chunks(chunk1, chunk2)
     prevchunks->prev = curentchunk->prev and nextchunks->next = currentchunk->next
 -by "combine" I mean to change the pointers so that the point to the right things 
 
+realloc()
+pseudocode for reallocating:
+
+-takes in pointer to allocated memory
+-takes in new size of how much to allocate 
+-if the pointer taken in is NULL
+    -just call malloc(new_size)
+-if the size given to realloc is 0
+    -free the pointer and return NULL
+-if the pointer is not null and thesize is not zero
+    -check if the new size < current size
+    -calculate the current size - new size = leftover space
+    -if leftover space > sizeof(header)+16 (the minimum chunk size)
+        -make that into a new chunk
+        -check if the next chunk is free
+        -combine chunks
+    -if not, then just leave it
+    -adjust the pointers so that the new chunk is added to the linked list
+    -find the header of that chunk
+    -set its size to be currentsize - new_size
+-if the newsize > current size
+    -check if the chunk->next is free
+    -check if the current chunk + next chunk is large enough
+    -if it is, then combine chunks
+    -then allocate by modifying the header and changing it to not free
+-if its not then get more heap
+-copy over the contents with mem move
+-free the old chunk
+-return a pointer to this new memory
 
 
 

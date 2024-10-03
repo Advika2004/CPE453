@@ -6,6 +6,7 @@
 #include <errno.h>     
 #include <inttypes.h>  
 #include <string.h>
+#include <stdlib.h>
 
 
 #define STANDARD_HEAP_SIZE 65536  
