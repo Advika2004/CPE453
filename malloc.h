@@ -9,7 +9,7 @@
 #include <stdlib.h>
 
 
-#define STANDARD_HEAP_SIZE 65536  
+#define STANDARD_HEAP_SIZE 65536
 #define CHUNK_HEADER sizeof(ChunkHeader)  
 #define BUFFER_SIZE 1500
 #define length strlen(buf)
@@ -31,7 +31,7 @@ void* initialize_heap();
 void* malloc(size_t requested_amount);
 void* allocate_leftover(size_t left_to_allocate);
 size_t make_16(size_t number);
-int split_chunk(ChunkInfo chunk_info);
+void split_chunk(ChunkInfo chunk_info);
 ChunkInfo find_free_chunk(ChunkHeader* currChunk, size_t reqSize);
 void* get_more_heap();
 void* calloc(size_t num_elements, size_t element_size);
@@ -39,5 +39,9 @@ void* realloc(void* ptr, size_t new_size);
 void free(void* ptr);
 ChunkHeader* find_which_chunk(void* ptr);
 ChunkHeader* combine_free_chunks(ChunkHeader* currChk);
+ChunkHeader* create_leftover_chunk(ChunkHeader* chunk, size_t new_size);
+void* allocate_new_chunk_and_copy(void* ptr, size_t new_size);
+
+void print_heap();
 
 #endif

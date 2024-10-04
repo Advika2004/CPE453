@@ -8,7 +8,7 @@ ChunkHeader *startOfHeap = NULL;
 
 //will align to 16 byte boundary
 size_t make_16(size_t number){
-    return (number + 15) & -16;
+    return (number + 15) & ~0xF;
 }
 
 //initialize the heap
@@ -73,9 +73,6 @@ void* initialize_heap(){
     return firstChunk; 
 }
 
-
-
-
 ChunkInfo find_free_chunk(ChunkHeader* currChunk, size_t reqSize){ 
     //initialzie struct on stack
     ChunkInfo chunk_info;
@@ -92,7 +89,8 @@ ChunkInfo find_free_chunk(ChunkHeader* currChunk, size_t reqSize){
     //yes there is enough space
     //start_of_free_chunk_ptr is set to current free chunk of the right size
     while (currChunk != NULL){
-        if (currChunk->is_it_free == 1 && currChunk->size >= reqSize){ 
+        if (currChunk->is_it_free == 1 && currChunk->size >= (reqSize
+         + sizeof(ChunkHeader) + 16)){ 
             chunk_info.enough_space = 1; 
             chunk_info.start_of_free_chunk_ptr = currChunk; 
             chunk_info.amount_asked_for = reqSize; 
@@ -103,38 +101,24 @@ ChunkInfo find_free_chunk(ChunkHeader* currChunk, size_t reqSize){
         }
     }
     return chunk_info;   
-    //will have zero and null if nothing is found
 }
 
+//will only be called when it is splittalbe
+void split_chunk(ChunkInfo chunk_info){
 
-int split_chunk(ChunkInfo chunk_info){
-    //current free chunk will be allocated
-    //edit that header and make it not free
-    ChunkHeader *split_allocated = chunk_info.start_of_free_chunk_ptr;  
-   
-    // check if user asks for more than I have
-    // not enough space, return -1
-    // do not allocate anything right now
-    // this case will be handled in the malloc
-    if (chunk_info.amount_asked_for + sizeof(ChunkHeader) 
-    + 16 > split_allocated->size) {
-        return -1; 
-    }
+    //chunk that will be allocated
+    ChunkHeader *split_allocated = chunk_info.start_of_free_chunk_ptr; 
+
+    //user will never ask for more than what I have
+    //no longer need that check
 
     //calculate how much free space is left 
     //(current chunk size - requested size - sizeof(ChunkHeader)) + 16
+    // offset for addr of new chunk 
     size_t user_free_space_left = split_allocated->size 
                                   - chunk_info.amount_asked_for 
                                   - sizeof(ChunkHeader);
 
-
-    //if not enough in the free chunk for user to use with min amount
-    //mark entire chunk as allocated
-    if (user_free_space_left <= sizeof(ChunkHeader) + 16){
-        split_allocated->size = chunk_info.amount_asked_for;
-        split_allocated->is_it_free = 0; 
-        return 0; //not split, whole chunk used
-    }
 
     //if there is enough space, then allocate the chunk and split it
     split_allocated->size = chunk_info.amount_asked_for;
@@ -144,8 +128,8 @@ int split_chunk(ChunkInfo chunk_info){
     //next header starts after the amount allocated ends.
     //make sure that it is lined up with 16 
     //make new node
-    size_t free_chunk_start = make_16((((uintptr_t)split_allocated) 
-    + chunk_info.amount_asked_for + sizeof(ChunkHeader)));
+    uintptr_t free_chunk_start = (uintptr_t)split_allocated 
+                        + chunk_info.amount_asked_for + sizeof(ChunkHeader);
     ChunkHeader* split_free = (ChunkHeader*)free_chunk_start;
 
     //new node is free
@@ -166,11 +150,11 @@ int split_chunk(ChunkInfo chunk_info){
     if (split_free->next != NULL) {
         split_free->next->prev = split_free; 
     }
-
-    return 1; //it was split
+    //if the free's next is NULL
+    return;
 }
 
-void* get_more_heap(){
+void* get_more_heap(size_t amount_to_allocate){
 
     //tells me where the new heap chunk will start
     void* startOfNewHeap = sbrk(0); 
@@ -181,27 +165,11 @@ void* get_more_heap(){
         return NULL;
     }
 
-    //check if aligned
-    //if not do same as init heap
-    //make it mathable then adjust pointer
-    uintptr_t mathableNewAddy = (uintptr_t)startOfNewHeap;
-    if((mathableNewAddy % 16) != 0){
-        uintptr_t byteNewAdjustment = 16 - (mathableNewAddy % 16); 
-
-        //move the program break that many bytes forward 
-        //until the next multiple of 16
-        void* AlignedStartOfNewHeap = sbrk(byteNewAdjustment); 
-
-        //if the sbrk fails make it error
-        if(AlignedStartOfNewHeap == (void*)-1){ 
-            errno = ENOMEM;
-            return NULL;
-        }
-    }
+    int multiplier = (amount_to_allocate / STANDARD_HEAP_SIZE) + 1;
 
     //another call to sbrk will allocate 64KB of memory 
     //pointer will store where the new heap starts
-    void* moreHeapChunkStart = sbrk(STANDARD_HEAP_SIZE);
+    void* moreHeapChunkStart = sbrk(multiplier * STANDARD_HEAP_SIZE);
 
     //check if it fails
     if(moreHeapChunkStart == (void*)-1){ 
@@ -213,7 +181,7 @@ void* get_more_heap(){
     //puts the first node in the chunk of memory 
     //find how much more memory the user can have
     ChunkHeader *newHeapChunk = (ChunkHeader*)moreHeapChunkStart; 
-    size_t new_calculated_size = STANDARD_HEAP_SIZE - CHUNK_HEADER;
+    size_t new_calculated_size = amount_to_allocate - CHUNK_HEADER;
 
     //make sure it is aligned
     newHeapChunk->size = make_16(new_calculated_size);
@@ -247,192 +215,55 @@ void* get_more_heap(){
     return newHeapChunk;
 }
 
-//recursive function to keep allocating what is left over
-void* allocate_leftover(size_t left_to_allocate) {
-
-
-    //allocate a new chunk
-    ChunkHeader* new_heap_chunk = get_more_heap();
-
-    //check if that fails
-    if (new_heap_chunk == NULL) {
-        return NULL;
-    }
-
-    //try to fit the remaining data in the new chunk
-    ChunkInfo newChunkInfo = find_free_chunk(new_heap_chunk, left_to_allocate);
-    int leftoverResult = split_chunk(newChunkInfo);
-
-    // if it fits, return the pointer to the allocated space
-    if (leftoverResult == 0 || leftoverResult == 1) {
-        return (void*)((uintptr_t)newChunkInfo.start_of_free_chunk_ptr 
-        + sizeof(ChunkHeader));
-    }
-
-    //still not enough space, recursively allocate again until enough space
-    if (leftoverResult == -1) {
-        // Calculate how much is left to allocate after using this chunk
-        size_t allocated_already = newChunkInfo.start_of_free_chunk_ptr->size;
-        size_t new_left_to_allocate = left_to_allocate - allocated_already;
-
-        //call allocate_leftover for the remaining space
-        return allocate_leftover(new_left_to_allocate);
-    }
-    //should never reach here
-    return NULL;
-}
-
-
 void* malloc(size_t requested_amount){
-
-    //check if malloc is linking and running
-    snprintf(buf, BUFFER_SIZE, "Calling malloc succeeded:\n");
-    write(STDOUT_FILENO, buf, strlen(buf));
-
-    //starts off as no memory found so not successful
-    int successFlag = 0; 
-
     //what malloc will return eventually
     void* ptr_to_user_memory = NULL;
+
+    if(requested_amount == 0){
+        return NULL;
+    }
 
     //make sure what they ask for is aligned
     requested_amount = make_16(requested_amount);
 
-    snprintf(buf, BUFFER_SIZE, 
-    "Requested amount (aligned to 16): %zu\n", requested_amount);
-    write(STDOUT_FILENO, buf, strlen(buf));
-
     //if there is no chunk yet, make one
     if (startOfHeap == NULL){
-
-        snprintf(buf, BUFFER_SIZE, "Initializing heap.\n");
-        write(STDOUT_FILENO, buf, strlen(buf));
-
         initialize_heap();
     }
 
     //while there is no memory found for the user to use
     //traverse and find a free node
-    while(successFlag == 0){
+    ChunkInfo chunkInfo = find_free_chunk(startOfHeap, requested_amount);
 
-        snprintf(buf, BUFFER_SIZE, "Finding free chunk.\n");
-        write(STDOUT_FILENO, buf, strlen(buf));
+    //if a big enough chunk is found
+    if (chunkInfo.enough_space == 1){
+        split_chunk(chunkInfo);
+        return (uintptr_t)chunkInfo.start_of_free_chunk_ptr 
+                + (uintptr_t)sizeof(ChunkHeader);
+    }
 
-        ChunkInfo chunkInfo = find_free_chunk(startOfHeap, requested_amount);
+    else{
+    //allocate a new chunk
 
-        //if a big enough chunk is found
-        if (chunkInfo.enough_space == 1){
-
-            snprintf(buf, BUFFER_SIZE, "Found a chunk with enough space.\n");
-            write(STDOUT_FILENO, buf, strlen(buf));
-
-            //then split that chunk up into allocated and what's free left over
-            int result = split_chunk(chunkInfo);
-
-            //if the whole chunk was allocated
-            //need to grab a new chunk and return the start of that to user
-            if (result == 0) {
-
-                snprintf(buf, BUFFER_SIZE, 
-                "Entire chunk allocated. Getting more heap.\n");
-                write(STDOUT_FILENO, buf, strlen(buf));
-
-                //allocate a new chunk
-                ChunkHeader* got_more_chunk = get_more_heap();
+        ChunkHeader* got_more_chunk = 
+        get_more_heap(requested_amount);
     
-                //check if that fails
-                if (got_more_chunk == NULL) {
-
-                    snprintf(buf, BUFFER_SIZE, 
-                    "Error: Could not allocate more memory.\n");
-                    write(STDOUT_FILENO, buf, strlen(buf));
-
-                    return NULL;
-                }
-
-                //return start of the new chunk's usable memory (after header)
-                //it was successfully mallocked
-                //return ptr to user
-                ptr_to_user_memory = (void*)((uintptr_t)got_more_chunk 
-                + sizeof(ChunkHeader));
-                successFlag = 1;
-
-                snprintf(buf, BUFFER_SIZE, 
-                "Returning new chunk pointer: %p\n", ptr_to_user_memory);
-                write(STDOUT_FILENO, buf, strlen(buf));
-
-                return ptr_to_user_memory;
-            } 
-            
-            //if the chunk was split up and allocated
-            //return pointer to the split_free header
-            else if (result == 1) {
-
-                snprintf(buf, BUFFER_SIZE, 
-                "Chunk split successfully. Allocating memory.\n");
-                write(STDOUT_FILENO, buf, strlen(buf));
-
-                ptr_to_user_memory = (void*)((uintptr_t)
-                chunkInfo.start_of_free_chunk_ptr + sizeof(ChunkHeader));
-                successFlag = 1;
-
-                snprintf(buf, BUFFER_SIZE, 
-                "Returning pointer after split: %p\n", ptr_to_user_memory);
-                write(STDOUT_FILENO, buf, strlen(buf));
-
-                return ptr_to_user_memory;  // Return that to the user
-            }
-
-            //need to allocate more and split
-            //If no chunk had enough space (enough_space == 0) 
-            //or if the result was -1 (nothing was allocated bc too small)
-            else if (chunkInfo.enough_space == 0 || result == -1) {
-
-                snprintf(buf, BUFFER_SIZE, 
-                "Not enough space in current chunk. Allocating new chunk.\n");
-                write(STDOUT_FILENO, buf, strlen(buf));
-
-                //allocate the entire thing
-                //calculate how much spills over for the new chunk
-                size_t allocated_already = 
-                chunkInfo.start_of_free_chunk_ptr->size;
-                size_t left_to_allocate = requested_amount - allocated_already;
-
-                snprintf(buf, BUFFER_SIZE, 
-                "Allocated already: %zu, Left to allocate: %zu\n", 
-                allocated_already, left_to_allocate);
-                write(STDOUT_FILENO, buf, strlen(buf));
-            
-                //say current chunk is fully used
-                chunkInfo.start_of_free_chunk_ptr->is_it_free = 0; 
-
-                //call allocate leftover to allocate what is left
-                void* leftover_ptr = allocate_leftover(left_to_allocate);
-
-                //successful, return the pointer
-                if (leftover_ptr != NULL) {
-                    ptr_to_user_memory = leftover_ptr;
-                    successFlag = 1;
-
-                    snprintf(buf, BUFFER_SIZE, 
-                    "Allocated leftover memory. Returning pointer: %p\n",
-                     ptr_to_user_memory);
-                    write(STDOUT_FILENO, buf, strlen(buf));
-
-                    return ptr_to_user_memory;
-                }
-                else {
-                    
-                    snprintf(buf, BUFFER_SIZE, 
-                    "Error: Could not allocate leftover memory.\n");
-                    write(STDOUT_FILENO, buf, strlen(buf));
-
-                    return NULL;
-                }
-            }
+        //check if that fails
+        if (got_more_chunk == NULL) {
+            return NULL;
         }
-    }       
-    return ptr_to_user_memory;
+
+        //return start of the new chunk's usable memory (after header)
+        //it was successfully mallocked
+        //return ptr to user
+        ptr_to_user_memory = (void*)((uintptr_t)got_more_chunk 
+        + sizeof(ChunkHeader));
+
+        return ptr_to_user_memory;
+
+    }
+
+    return NULL;
 }
 
 void* calloc(size_t num_elements, size_t element_size){
@@ -472,13 +303,16 @@ ChunkHeader* combine_free_chunks(ChunkHeader* currChk){
     if((prevChunk != NULL) && (currChk->is_it_free == 1)
      && (prevChunk->is_it_free == 1)){
         combined_size = currChk->size + prevChunk->size + sizeof(ChunkHeader);
-        prevChunk->size = combined_size;
-        prevChunk->next = currChk->next;
 
-        if (currChk->next != NULL) {
-            currChk->next->prev = prevChunk;
+        if (combined_size >= sizeof(ChunkHeader) + 16){
+            prevChunk->size = combined_size;
+            prevChunk->next = currChk->next;
+
+            if (currChk->next != NULL) {
+                currChk->next->prev = prevChunk;
+            }
+            currChk = prevChunk;
         }
-        currChk = prevChunk;
     }
 
     //case 2: one after is free and current is free
@@ -486,11 +320,14 @@ ChunkHeader* combine_free_chunks(ChunkHeader* currChk){
     if((nextChunk != NULL) && (currChk->is_it_free == 1)
      && (nextChunk->is_it_free == 1)){
         combined_size = currChk->size + nextChunk->size + sizeof(ChunkHeader);
-        currChk->size = combined_size;
-        currChk->next = nextChunk->next;
 
-        if (nextChunk->next != NULL) {
-            nextChunk->next->prev = currChk;
+        if (combined_size >= sizeof(ChunkHeader) + 16){
+            currChk->size = combined_size;
+            currChk->next = nextChunk->next;
+
+            if (nextChunk->next != NULL) {
+                nextChunk->next->prev = currChk;
+            }
         }
     }
 
@@ -499,18 +336,20 @@ ChunkHeader* combine_free_chunks(ChunkHeader* currChk){
      && (nextChunk->is_it_free == 1) && (prevChunk->is_it_free == 1)){
         combined_size = currChk->size + nextChunk->size + prevChunk->size
          + sizeof(ChunkHeader) + sizeof(ChunkHeader);
-        prevChunk->size = combined_size;
-        prevChunk->next = nextChunk->next; 
 
-        if (nextChunk->next != NULL) {
-            nextChunk->next->prev = prevChunk;
+        if (combined_size >= sizeof(ChunkHeader) + 16){
+            prevChunk->size = combined_size;
+            prevChunk->next = nextChunk->next; 
+
+            if (nextChunk->next != NULL) {
+                nextChunk->next->prev = prevChunk;
+            }
+
+            currChk = prevChunk;
         }
-
-        currChk = prevChunk;
     }
-    return currChk;
+    return currChk; //combining chunks returns the pointer to the larger chunk
 }
-
 
 ChunkHeader* find_which_chunk(void* ptr){
     //start at the top of the linked list
@@ -569,137 +408,204 @@ void free(void* ptr){
     return;
 }
 
-void print_heap() {
-    ChunkHeader *current_chunk = startOfHeap;
+//function to find what is left over and make that its own chunk
+//takes in the 
+ChunkHeader* create_leftover_chunk(ChunkHeader* chunk, size_t new_size) {
 
-    if (current_chunk == NULL) {
-        snprintf(buf, BUFFER_SIZE, "Heap is empty.\n");
-        write(STDOUT_FILENO, buf, strlen(buf));
-        return;
+    //the leftover space is the chunk's size - the new size
+    size_t leftover_space = chunk->size - new_size;
+
+    //if the leftover space is big enough to make a chunk out of
+    //the new chunk made from what is leftover will start at:
+    //the current chunk + the new size used
+    if(leftover_space >= sizeof(ChunkHeader) + 16){
+    ChunkHeader* leftover_free_chunk_header = (ChunkHeader*)
+    ((uintptr_t)chunk
+    + (uintptr_t)new_size);
+        
+        // !could be causing segfault
+        // //check if the one after that is free too 
+        // if(leftover_free_chunk_header->next->is_it_free == 1){
+        //     leftover_free_chunk_header = 
+        //     combine_free_chunks(leftover_free_chunk_header);
+        // }
+
+        //if the one after is not free then I dont need to combine
+        //just need to add the new node to end of the list
+        //update the new node's fields 
+        leftover_free_chunk_header->next = chunk->next;
+
+        if (chunk->next != NULL) {
+            chunk->next->prev = leftover_free_chunk_header;
+        }
+        chunk->next = leftover_free_chunk_header;
+        leftover_free_chunk_header->prev = chunk;
+        leftover_free_chunk_header->is_it_free = 1; 
+        leftover_free_chunk_header->size = leftover_space - 
+        sizeof(ChunkHeader);
+
+        return leftover_free_chunk_header;
+        //returning header. will need to calculate where data stars in realloc
     }
-
-    snprintf(buf, BUFFER_SIZE, "Heap structure:\n");
-    write(STDOUT_FILENO, buf, strlen(buf));
-
-    // Iterate through all chunks in the heap
-    while (current_chunk != NULL) {
-        // Print the chunk's memory address, size, and whether it's free or not
-        snprintf(buf, BUFFER_SIZE,
-                 "Chunk at address: %p\n  Size: %zu bytes\n  Is free: %d\n",
-                 (void*)current_chunk, current_chunk->size, current_chunk->is_it_free);
-        write(STDOUT_FILENO, buf, strlen(buf));
-
-        // Move to the next chunk in the heap
-        current_chunk = current_chunk->next;
-    }
-
-    snprintf(buf, BUFFER_SIZE, "End of heap.\n");
-    write(STDOUT_FILENO, buf, strlen(buf));
+    //if its not big enough 
+    //so in realloc, check if this function returns NULL
+    //if it does, then I have to call allocate_new_chunk
+    return NULL;
 }
+
+//function to allocate a new chunk and move data
+void* allocate_new_chunk_and_copy(void* ptr, size_t new_size) {
+    void* new_chunk = malloc(new_size);
+
+    //check if the malocking failed
+    if (new_chunk == NULL) {
+        return NULL;
+    }
+
+    // Copy data from old chunk to new chunk
+    memmove(new_chunk, ptr, new_size);
+
+    // Free the old chunk
+    free(ptr);
+
+    // Return pointer to the user data part of the new chunk
+    return new_chunk;
+}
+
 
 void* realloc(void* ptr, size_t new_size){
 
-    ChunkHeader* reallocked_ptr = NULL;
-    
+    //make sure the new size wanted is aligned
+    new_size = make_16(new_size);
+
     //check if the pointer given is NULL just call malloc
     if(ptr == NULL){
-        reallocked_ptr = malloc(new_size);
-        return reallocked_ptr;
+        return malloc(new_size);
     }
-
+        
     //check if the size given is zero
     if(new_size == 0){
         free(ptr);
         return NULL;
     }
 
-    //if the pointer is not null and the size is not zero can truly realloc
-    if((ptr != NULL) && (new_size != 0)){
+    //need to calculate where the header starts
+    ChunkHeader* theHeaderStarts;
+    uintptr_t mathableAddy = (uintptr_t)ptr;
 
-        //need to calculate where the header starts
-        ChunkHeader* theHeaderStarts;
-        uintptr_t mathableAddy = (uintptr_t)ptr;
+    //go backwards by the size of the chunk header to find the header
+    //get the size of that chunk
+    theHeaderStarts = (ChunkHeader*)(mathableAddy - sizeof(ChunkHeader));
+    size_t current_chunk_size = theHeaderStarts->size;
 
-        //go backwards by the size of the chunk header to find the header
-        //get the size of that chunk
-        theHeaderStarts = (ChunkHeader*)(mathableAddy - sizeof(ChunkHeader));
-        size_t current_chunk_size = theHeaderStarts->size;
+    //SHRINKING: 
+    //case 1: new size is smaller than current chunk size
+    //allocate what I need by updating the header
+    //make the leftover space into its own node
+    //combine it with other free stuff
+    //return pointer to where data starts 
 
-        //case 1: the new_size given is less than current size
-        //allocate what I need by updating the header
-        if(new_size < current_chunk_size){
-            theHeaderStarts->size = new_size;
-            theHeaderStarts->is_it_free = 0;
+    if(new_size < current_chunk_size){
 
-            //find how much the leftover space is
-            //make that into a new chunk
-            //calculate where the leftover chunk starts
-            size_t leftover_space = current_chunk_size - new_size;
 
-            //if the leftover space is big enough to make a chunk out of
-            if(leftover_space > sizeof(ChunkHeader) + 16){
-                ChunkHeader* leftover_free_chunk = (ChunkHeader*)
-                ((uintptr_t)theHeaderStarts 
-                + new_size + sizeof(ChunkHeader));
+        theHeaderStarts->size = new_size;
 
-                //check if the one after that is free too
-                if(leftover_free_chunk->next){
-                    combine_free_chunks(leftover_free_chunk);
-                }
+        ChunkHeader* leftoverChunk = 
+        create_leftover_chunk(theHeaderStarts, new_size);
 
-                //if the next one is not free, just leave this free chunk alone
-                //add new broken off chunk to the linked list and fill its fields
-                leftover_free_chunk->next = theHeaderStarts->next;
-                theHeaderStarts->next->prev = leftover_free_chunk;
-                leftover_free_chunk->prev = theHeaderStarts;
-                leftover_free_chunk->is_it_free = 1; 
-                leftover_free_chunk->size = leftover_space - sizeof(ChunkHeader);
-
-                //reallocked pointer is theHeaderStarts
-                reallocked_ptr = theHeaderStarts;
-            }
+        //that means a left over chunk was made into its own chunk. 
+        //return the og ptr
+        if(leftoverChunk != NULL){
+            return ptr;
         }
+        //if it does equal NULL, that means wasn't large enough for min chunk
+        //then have to update the size of the chunk
+        //leftover size is the chunk size - the new size 
+        //the data size is the leftover space
 
-        //case 2: if realloc is asking for the same size, just return same ptr
-        if(new_size == current_chunk_size){
-            reallocked_ptr = ptr;
-        }
-
-        //case 3: new size is larger than current
-        //need to check if the next is free
-        else if (new_size > current_chunk_size){
-            
-            //check if the next chunk is free and not NULL
-            ChunkHeader* nextdoorChunk = theHeaderStarts->next;
-            if(nextdoorChunk != NULL && nextdoorChunk->is_it_free == 0){
-                //check if combining them will make it large enough
-                //then allocate it
-                if((current_chunk_size + nextdoorChunk->size + sizeof(ChunkHeader)) >= new_size){
-                    combine_free_chunks(theHeaderStarts);
-                    theHeaderStarts->is_it_free = 0;
-                    theHeaderStarts->next = nextdoorChunk->next;
-                    theHeaderStarts->size = (current_chunk_size + nextdoorChunk->size + sizeof(ChunkHeader));
-                }
-
-                //if combining them will not make it bigger, then get more mem
-                //copy stuff over
-                //free the old chunk
-                else{
-                    ChunkHeader* gotnewChunk = malloc(new_size);
-
-                    //check if mallocking that failed
-                    if(gotnewChunk == NULL){
-                        reallocked_ptr = NULL;
-                    }
-
-                    memmove(gotnewChunk, ptr, current_chunk_size);
-
-                    free(ptr);
-
-                    reallocked_ptr = gotnewChunk;
-                }
-            }
-        }
+        theHeaderStarts->size = new_size;
     }
-    return reallocked_ptr;
-}
+
+    //DO NOTHING:
+    //it is the same size so just return the same pointer
+    else if (new_size == current_chunk_size) {
+        return ptr;
+    }
+
+    //GROWING:
+    //new size is larger than current and the next one is free
+    //and that is large enough
+    //combine the chunks, allocate what you need
+    //make new chunk with leftover
+    //check if other is free next to it
+    //combine that too
+    //return pointer to first node
+
+    else if(new_size >= current_chunk_size){ //if size is larger than current 
+
+
+        //check if the next chunk is free and not NULL
+        ChunkHeader* nextdoorChunk = theHeaderStarts->next;
+
+        //check if the next chunk is free
+        if(nextdoorChunk != NULL && nextdoorChunk->is_it_free == 1){
+
+            //check if combining them will make it large enough
+            //then allocate it
+            if((current_chunk_size + nextdoorChunk->size + 
+                sizeof(ChunkHeader) + 16) >= new_size){
+                
+                //combine the chunks 
+                combine_free_chunks(theHeaderStarts);
+
+                //if there is a leftover part, then make a chunk out of it
+                create_leftover_chunk(theHeaderStarts, new_size);
+                return ptr;
+            }
+        }
+
+            //if the next chunk is NULL
+            //or if the next chunk is not free
+            //or if combining the chunks doesn't make it large enough
+            //get more heap
+            //combine it with the current chunk
+            //create a leftover chunk
+            get_more_heap(new_size);
+            ChunkHeader* biggerFreeChunk = combine_free_chunks(nextdoorChunk);
+            create_leftover_chunk(biggerFreeChunk, new_size);
+            return ptr;
+        }  
+        return NULL;
+    }
+
+
+
+
+void print_heap() {
+        ChunkHeader *current_chunk = startOfHeap;
+    
+        if (current_chunk == NULL) {
+            snprintf(buf, BUFFER_SIZE, "Heap is empty.\n");
+            write(STDOUT_FILENO, buf, strlen(buf));
+            return;
+        }
+    
+        snprintf(buf, BUFFER_SIZE, "Heap structure:\n");
+        write(STDOUT_FILENO, buf, strlen(buf));
+    
+        // Iterate through all chunks in the heap
+        while (current_chunk != NULL) {
+            // Print the chunk's memory address, size, and if free or not
+            snprintf(buf, BUFFER_SIZE,
+                    "Chunk at address: %p\n  Size: %zu bytes\n  Is free: %d\n",
+                     (void*)current_chunk, current_chunk->size, 
+                     current_chunk->is_it_free);
+            write(STDOUT_FILENO, buf, strlen(buf));
+    
+            // Move to the next chunk in the heap
+            current_chunk = current_chunk->next;
+        }
+    
+        snprintf(buf, BUFFER_SIZE, "End of heap.\n");
+        write(STDOUT_FILENO, buf, strlen(buf));
+    }
