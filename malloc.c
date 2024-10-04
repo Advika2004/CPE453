@@ -412,6 +412,8 @@ void free(void* ptr){
 //takes in the 
 ChunkHeader* create_leftover_chunk(ChunkHeader* chunk, size_t new_size) {
 
+    new_size = make_16(new_size);
+
     //the leftover space is the chunk's size - the new size
     size_t leftover_space = chunk->size - new_size;
 
@@ -420,8 +422,7 @@ ChunkHeader* create_leftover_chunk(ChunkHeader* chunk, size_t new_size) {
     //the current chunk + the new size used
     if(leftover_space >= sizeof(ChunkHeader) + 16){
     ChunkHeader* leftover_free_chunk_header = (ChunkHeader*)
-    ((uintptr_t)chunk
-    + (uintptr_t)new_size);
+    ((uintptr_t)chunk + + sizeof(ChunkHeader) + new_size);
         
         // !could be causing segfault
         // //check if the one after that is free too 
@@ -441,6 +442,8 @@ ChunkHeader* create_leftover_chunk(ChunkHeader* chunk, size_t new_size) {
         chunk->next = leftover_free_chunk_header;
         leftover_free_chunk_header->prev = chunk;
         leftover_free_chunk_header->is_it_free = 1; 
+        chunk->is_it_free = 0;
+        chunk->size = new_size;
         leftover_free_chunk_header->size = leftover_space - 
         sizeof(ChunkHeader);
 
@@ -472,7 +475,6 @@ void* allocate_new_chunk_and_copy(void* ptr, size_t new_size) {
     return new_chunk;
 }
 
-
 void* realloc(void* ptr, size_t new_size){
 
     //make sure the new size wanted is aligned
@@ -491,11 +493,11 @@ void* realloc(void* ptr, size_t new_size){
 
     //need to calculate where the header starts
     ChunkHeader* theHeaderStarts;
-    uintptr_t mathableAddy = (uintptr_t)ptr;
 
     //go backwards by the size of the chunk header to find the header
     //get the size of that chunk
-    theHeaderStarts = (ChunkHeader*)(mathableAddy - sizeof(ChunkHeader));
+    theHeaderStarts = (ChunkHeader*)((uintptr_t)ptr
+     - (uintptr_t)sizeof(ChunkHeader));
     size_t current_chunk_size = theHeaderStarts->size;
 
     //SHRINKING: 
@@ -507,105 +509,65 @@ void* realloc(void* ptr, size_t new_size){
 
     if(new_size < current_chunk_size){
 
-
-        theHeaderStarts->size = new_size;
-
         ChunkHeader* leftoverChunk = 
         create_leftover_chunk(theHeaderStarts, new_size);
 
         //that means a left over chunk was made into its own chunk. 
         //return the og ptr
-        if(leftoverChunk != NULL){
-            return ptr;
-        }
-        //if it does equal NULL, that means wasn't large enough for min chunk
-        //then have to update the size of the chunk
-        //leftover size is the chunk size - the new size 
-        //the data size is the leftover space
 
-        theHeaderStarts->size = new_size;
-    }
-
-    //DO NOTHING:
-    //it is the same size so just return the same pointer
-    else if (new_size == current_chunk_size) {
         return ptr;
     }
+    return ptr;
+}
 
-    //GROWING:
-    //new size is larger than current and the next one is free
-    //and that is large enough
-    //combine the chunks, allocate what you need
-    //make new chunk with leftover
-    //check if other is free next to it
-    //combine that too
-    //return pointer to first node
+    // //DO NOTHING:
+    // //it is the same size so just return the same pointer
+    // else if (new_size == current_chunk_size) {
+    //     return ptr;
+    // }
 
-    else if(new_size >= current_chunk_size){ //if size is larger than current 
+    // //GROWING:
+    // //new size is larger than current and the next one is free
+    // //and that is large enough
+    // //combine the chunks, allocate what you need
+    // //make new chunk with leftover
+    // //check if other is free next to it
+    // //combine that too
+    // //return pointer to first node
+
+    // else if(new_size >= current_chunk_size){ //if size larger than current
 
 
-        //check if the next chunk is free and not NULL
-        ChunkHeader* nextdoorChunk = theHeaderStarts->next;
+    //     //check if the next chunk is free and not NULL
+    //     ChunkHeader* nextdoorChunk = theHeaderStarts->next;
 
-        //check if the next chunk is free
-        if(nextdoorChunk != NULL && nextdoorChunk->is_it_free == 1){
+    //     //check if the next chunk is free
+    //     if(nextdoorChunk != NULL && nextdoorChunk->is_it_free == 1){
 
-            //check if combining them will make it large enough
-            //then allocate it
-            if((current_chunk_size + nextdoorChunk->size + 
-                sizeof(ChunkHeader) + 16) >= new_size){
+    //         //check if combining them will make it large enough
+    //         //then allocate it
+    //         if((current_chunk_size + nextdoorChunk->size + 
+    //             sizeof(ChunkHeader) + 16) >= new_size){
                 
-                //combine the chunks 
-                combine_free_chunks(theHeaderStarts);
+    //             //combine the chunks 
+    //             combine_free_chunks(theHeaderStarts);
 
-                //if there is a leftover part, then make a chunk out of it
-                create_leftover_chunk(theHeaderStarts, new_size);
-                return ptr;
-            }
-        }
+    //             //if there is a leftover part, then make a chunk out of it
+    //             create_leftover_chunk(theHeaderStarts, new_size);
+    //             return ptr;
+    //         }
+    //     }
 
-            //if the next chunk is NULL
-            //or if the next chunk is not free
-            //or if combining the chunks doesn't make it large enough
-            //get more heap
-            //combine it with the current chunk
-            //create a leftover chunk
-            get_more_heap(new_size);
-            ChunkHeader* biggerFreeChunk = combine_free_chunks(nextdoorChunk);
-            create_leftover_chunk(biggerFreeChunk, new_size);
-            return ptr;
-        }  
-        return NULL;
-    }
-
-
-
-
-void print_heap() {
-        ChunkHeader *current_chunk = startOfHeap;
-    
-        if (current_chunk == NULL) {
-            snprintf(buf, BUFFER_SIZE, "Heap is empty.\n");
-            write(STDOUT_FILENO, buf, strlen(buf));
-            return;
-        }
-    
-        snprintf(buf, BUFFER_SIZE, "Heap structure:\n");
-        write(STDOUT_FILENO, buf, strlen(buf));
-    
-        // Iterate through all chunks in the heap
-        while (current_chunk != NULL) {
-            // Print the chunk's memory address, size, and if free or not
-            snprintf(buf, BUFFER_SIZE,
-                    "Chunk at address: %p\n  Size: %zu bytes\n  Is free: %d\n",
-                     (void*)current_chunk, current_chunk->size, 
-                     current_chunk->is_it_free);
-            write(STDOUT_FILENO, buf, strlen(buf));
-    
-            // Move to the next chunk in the heap
-            current_chunk = current_chunk->next;
-        }
-    
-        snprintf(buf, BUFFER_SIZE, "End of heap.\n");
-        write(STDOUT_FILENO, buf, strlen(buf));
-    }
+    //         //if the next chunk is NULL
+    //         //or if the next chunk is not free
+    //         //or if combining the chunks doesn't make it large enough
+    //         //get more heap
+    //         //combine it with the current chunk
+    //         //create a leftover chunk
+    //         get_more_heap(new_size);
+    //         ChunkHeader* biggerFreeChunk=combine_free_chunks(nextdoorChunk);
+    //         create_leftover_chunk(biggerFreeChunk, new_size);
+    //         return ptr;
+    //     }  
+    //     return NULL;
+    // }

@@ -1317,3 +1317,112 @@ void* my_malloc(uint64_t requested_amount){
                     }
                     return reallocked_ptr;
                 }
+
+
+
+
+realloc is here:
+void* realloc(void* ptr, size_t new_size){
+
+    //make sure the new size wanted is aligned
+    new_size = make_16(new_size);
+
+    //check if the pointer given is NULL just call malloc
+    if(ptr == NULL){
+        return malloc(new_size);
+    }
+        
+    //check if the size given is zero
+    if(new_size == 0){
+        free(ptr);
+        return NULL;
+    }
+
+    //need to calculate where the header starts
+    ChunkHeader* theHeaderStarts;
+    uintptr_t mathableAddy = (uintptr_t)ptr;
+
+    //go backwards by the size of the chunk header to find the header
+    //get the size of that chunk
+    theHeaderStarts = (ChunkHeader*)(mathableAddy - sizeof(ChunkHeader));
+    size_t current_chunk_size = theHeaderStarts->size;
+
+    //SHRINKING: 
+    //case 1: new size is smaller than current chunk size
+    //allocate what I need by updating the header
+    //make the leftover space into its own node
+    //combine it with other free stuff
+    //return pointer to where data starts 
+
+    if(new_size < current_chunk_size){
+
+
+        theHeaderStarts->size = new_size;
+
+        ChunkHeader* leftoverChunk = 
+        create_leftover_chunk(theHeaderStarts, new_size);
+
+        //that means a left over chunk was made into its own chunk. 
+        //return the og ptr
+        if(leftoverChunk != NULL){
+            return ptr;
+        }
+        //if it does equal NULL, that means wasn't large enough for min chunk
+        //then have to update the size of the chunk
+        //leftover size is the chunk size - the new size 
+        //the data size is the leftover space
+
+        theHeaderStarts->size = new_size;
+    }
+
+    //DO NOTHING:
+    //it is the same size so just return the same pointer
+    else if (new_size == current_chunk_size) {
+        return ptr;
+    }
+
+    //GROWING:
+    //new size is larger than current and the next one is free
+    //and that is large enough
+    //combine the chunks, allocate what you need
+    //make new chunk with leftover
+    //check if other is free next to it
+    //combine that too
+    //return pointer to first node
+
+    else if(new_size >= current_chunk_size){ //if size is larger than current 
+
+
+        //check if the next chunk is free and not NULL
+        ChunkHeader* nextdoorChunk = theHeaderStarts->next;
+
+        //check if the next chunk is free
+        if(nextdoorChunk != NULL && nextdoorChunk->is_it_free == 1){
+
+            //check if combining them will make it large enough
+            //then allocate it
+            if((current_chunk_size + nextdoorChunk->size + 
+                sizeof(ChunkHeader) + 16) >= new_size){
+                
+                //combine the chunks 
+                combine_free_chunks(theHeaderStarts);
+
+                //if there is a leftover part, then make a chunk out of it
+                create_leftover_chunk(theHeaderStarts, new_size);
+                return ptr;
+            }
+        }
+
+            //if the next chunk is NULL
+            //or if the next chunk is not free
+            //or if combining the chunks doesn't make it large enough
+            //get more heap
+            //combine it with the current chunk
+            //create a leftover chunk
+            get_more_heap(new_size);
+            ChunkHeader* biggerFreeChunk = combine_free_chunks(nextdoorChunk);
+            create_leftover_chunk(biggerFreeChunk, new_size);
+            return ptr;
+        }  
+        return NULL;
+    }
