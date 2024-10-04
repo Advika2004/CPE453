@@ -507,6 +507,9 @@ void* realloc(void* ptr, size_t new_size){
     //combine it with other free stuff
     //return pointer to where data starts 
 
+    ChunkHeader* nextdoorChunk = theHeaderStarts->next;
+
+
     if(new_size < current_chunk_size){
 
         ChunkHeader* leftoverChunk = 
@@ -517,14 +520,21 @@ void* realloc(void* ptr, size_t new_size){
 
         return ptr;
     }
+
+    //if the next chunk is not null and the next thing is not free
+    else if(!nextdoorChunk->is_it_free || 
+            nextdoorChunk->size + current_chunk_size < new_size){
+        void* new_ptr = malloc(new_size);
+        memmove(new_ptr, ptr, current_chunk_size);
+        free(ptr);
+        return new_ptr;
+    }
+    
+    
     return ptr;
 }
 
-    // //DO NOTHING:
-    // //it is the same size so just return the same pointer
-    // else if (new_size == current_chunk_size) {
-    //     return ptr;
-    // }
+   
 
     // //GROWING:
     // //new size is larger than current and the next one is free
