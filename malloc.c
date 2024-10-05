@@ -206,7 +206,7 @@ void* malloc(size_t requested_amount){
         if (getenv("DEBUG_MALLOC")) {
             char buf[BUFFER_SIZE];
             int err = snprintf(buf, BUFFER_SIZE, 
-            "MALLOC: malloc(%zu) => (ptr=%p, size=%zu)\n",
+            "MALLOC: malloc(%zu) 25=> (ptr=%p, size=%zu)\n",
                                (size_t)requested_amount, NULL, (size_t)0);
             if (err < 0) {
                 exit(1);
@@ -239,8 +239,10 @@ void* malloc(size_t requested_amount){
         if (getenv("DEBUG_MALLOC")) {
             char buf[BUFFER_SIZE];
             int err = snprintf(buf, BUFFER_SIZE, 
-            "MALLOC: malloc(%zu) => (ptr=%p, size=%zu)\n",
-                               (size_t)requested_amount, NULL, (size_t)0);
+            "MALLOC: malloc(%zu) 23 => (ptr=%p, size=%zu)\n",
+                               (size_t)requested_amount, 
+                               chunkInfo.start_of_free_chunk_ptr, 
+                               chunkInfo.start_of_free_chunk_ptr->size);
             if (err < 0) {
                 exit(1);
             }
@@ -264,20 +266,18 @@ void* malloc(size_t requested_amount){
         if (got_more_chunk == NULL) {
 
             if (getenv("DEBUG_MALLOC")) {
-            char buf[BUFFER_SIZE];
-            int err = snprintf(buf, BUFFER_SIZE, 
-            "MALLOC: malloc(%zu) => (ptr=%p, size=%zu)\n",
-                               (size_t)requested_amount, NULL, (size_t)0);
-            if (err < 0) {
-                exit(1);
+                char buf[BUFFER_SIZE];
+                int err = snprintf(buf, BUFFER_SIZE, 
+                "MALLOC: malloc no memory available\n");
+                if (err < 0) {
+                    exit(1);
+                }
+                err = write(STDERR_FILENO, buf, length);
+                if (err == -1) {
+                    exit(1);
+                }
             }
-            err = write(STDERR_FILENO, buf, length);
-            if (err == -1) {
-                exit(1);
-            }
-        }
-
-            return NULL;
+        return NULL;
         }
 
         //return start of the new chunk's usable memory (after header)
@@ -290,8 +290,10 @@ void* malloc(size_t requested_amount){
         if (getenv("DEBUG_MALLOC")) {
             char buf[BUFFER_SIZE];
             int err = snprintf(buf, BUFFER_SIZE, 
-            "MALLOC: malloc(%zu) => (ptr=%p, size=%zu)\n",
-                               (size_t)requested_amount, NULL, (size_t)0);
+            "MALLOC: malloc(%zu) 24=> (ptr=%p, size=%zu)\n",
+                               (size_t)requested_amount, 
+                               ptr_to_user_memory, 
+                               (size_t)got_more_chunk->size);
             if (err < 0) {
                 exit(1);
             }
@@ -302,23 +304,7 @@ void* malloc(size_t requested_amount){
         }
 
         return ptr_to_user_memory;
-
     }
-
-    if (getenv("DEBUG_MALLOC")) {
-            char buf[BUFFER_SIZE];
-            int err = snprintf(buf, BUFFER_SIZE, 
-            "MALLOC: malloc(%zu) => (ptr=%p, size=%zu)\n",
-                               (size_t)requested_amount, NULL, (size_t)0);
-            if (err < 0) {
-                exit(1);
-            }
-            err = write(STDERR_FILENO, buf, length);
-            if (err == -1) {
-                exit(1);
-            }
-        }
-
     return NULL;
 }
 
@@ -477,7 +463,7 @@ void free(void* ptr){
         if (getenv("DEBUG_MALLOC")) {
             char buf[BUFFER_SIZE];
             int err = snprintf(buf, BUFFER_SIZE, 
-            "MALLOC: free(%p) => invalid chunk\n", ptr);
+            "MALLOC: free(%p)\n", ptr);
             if (err < 0) {
                 exit(1);
             }
@@ -497,7 +483,7 @@ void free(void* ptr){
     if (getenv("DEBUG_MALLOC")) {
         char buf[BUFFER_SIZE];
         int err = snprintf(buf, BUFFER_SIZE, 
-        "MALLOC: free(%p) => invalid chunk\n", ptr);
+        "MALLOC: free(%p)\n", ptr);
         if (err < 0) {
             exit(1);
         }
@@ -548,26 +534,27 @@ ChunkHeader* create_leftover_chunk(ChunkHeader* chunk, size_t new_size) {
 
 //function to allocate a new chunk and move data
 void* allocate_new_chunk_and_copy(void* ptr, size_t new_size) {
-    void* new_chunk = malloc(new_size);
+    void* new_data = malloc(new_size);
 
     //check if the malocking failed
-    if (new_chunk == NULL) {
+    if (new_data == NULL) {
         return NULL;
     }
 
     // Copy data from old chunk to new chunk
-    memmove(new_chunk, ptr, new_size);
+    memmove(new_data, ptr, new_size);
 
     // Free the old chunk
     free(ptr);
 
     // Return pointer to the user data part of the new chunk
-    return new_chunk;
+    return new_data;
 }
 
 void* realloc(void* ptr, size_t new_size){
 
     //make sure the new size wanted is aligned
+    size_t og_size = new_size;
     new_size = make_16(new_size);
 
     //check if the pointer given is NULL just call malloc
@@ -577,8 +564,8 @@ void* realloc(void* ptr, size_t new_size){
         if (getenv("DEBUG_MALLOC")) {
             char buf[BUFFER_SIZE];
             int err = snprintf(buf, BUFFER_SIZE, 
-            "MALLOC: malloc(%zu) => (ptr=%p, size=%zu)\n", 
-                               new_size, newptr, new_size);
+            "MALLOC: realloc1(%p, %zu) => (ptr=%p, size=%zu)\n", 
+                               ptr, og_size, newptr, new_size);
             if (err < 0) {
                 exit(1);
             }
@@ -597,7 +584,9 @@ void* realloc(void* ptr, size_t new_size){
 
         if (getenv("DEBUG_MALLOC")) {
             char buf[BUFFER_SIZE];
-            int err = snprintf(buf, BUFFER_SIZE, "MALLOC: free(%p)\n", ptr);
+            int err = snprintf(buf, BUFFER_SIZE, 
+            "MALLOC: realloc2(%p, %zu) => (ptr=%p, size=%zu)\n", 
+            ptr, og_size, ptr, (size_t)0);
             if (err < 0) {
                 exit(1);
             }
@@ -637,7 +626,9 @@ void* realloc(void* ptr, size_t new_size){
 
         if (getenv("DEBUG_MALLOC")) {
             char buf[BUFFER_SIZE];
-            int err = snprintf(buf, BUFFER_SIZE, "MALLOC: free(%p)\n", ptr);
+            int err = snprintf(buf, BUFFER_SIZE, 
+            "MALLOC: realloc3(%p, %zu) => (ptr=%p, size=%zu)\n",
+             ptr, og_size, ptr, new_size);
             if (err < 0) {
                 exit(1);
             }
@@ -656,11 +647,16 @@ void* realloc(void* ptr, size_t new_size){
 
         
             void* new_ptr = 
-            allocate_new_chunk_and_copy(ptr, current_chunk_size);
+            allocate_new_chunk_and_copy(ptr, new_size);
 
             if (getenv("DEBUG_MALLOC")) {
             char buf[BUFFER_SIZE];
-            int err = snprintf(buf, BUFFER_SIZE, "MALLOC: free(%p)\n", ptr);
+            int err = snprintf(buf, BUFFER_SIZE, 
+            "MALLOC: realloc4(%p, %zu) => (ptr=%p, size=%zu) from %zu\n", 
+            ptr, og_size, new_ptr,
+                ((ChunkHeader*)((uintptr_t)new_ptr - 
+                (uintptr_t)sizeof(ChunkHeader)))
+                ->size, current_chunk_size);
             if (err < 0) {
                 exit(1);
             }
@@ -676,8 +672,8 @@ void* realloc(void* ptr, size_t new_size){
     if (getenv("DEBUG_MALLOC")) {
         char buf[BUFFER_SIZE];
         int err = snprintf(buf, BUFFER_SIZE, 
-        "MALLOC: realloc(%p, %zu) => (ptr=%p, size=%zu)\n", 
-                           ptr, new_size, ptr, new_size);
+        "MALLOC: realloc5(%p, %zu) => (ptr=%p, size=%zu)\n", 
+                           ptr, og_size, ptr, new_size);
         if (err < 0) {
             exit(1);
         }
