@@ -42,6 +42,4 @@ ChunkHeader* combine_free_chunks(ChunkHeader* currChk);
 ChunkHeader* create_leftover_chunk(ChunkHeader* chunk, size_t new_size);
 void* allocate_new_chunk_and_copy(void* ptr, size_t new_size);
 
-void print_heap();
-
 #endif
